@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arbetstid">
+<meta name="theme-color" content="#0f1115">
+<title>Arbetstid</title>
+<style>
+:root{--bg:#0f1115;--card:#181b21;--card2:#20242b;--text:#f1f3f5;--muted:#9aa3ad;--accent:#4f8cff;--red:#ff6262;--border:#2b3038;--green:#48c78e}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{min-height:100vh}main{max-width:760px;margin:auto;padding:calc(18px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom))}
+h1{font-size:30px;margin:0 0 4px}.sub{color:var(--muted);margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:17px;margin-bottom:14px}
+h2{font-size:20px;margin:0 0 15px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+label{display:block;font-size:14px;font-weight:650;margin-bottom:7px;color:#d8dce1}
+input{width:100%;min-height:46px;padding:10px 12px;border:1px solid var(--border);border-radius:11px;background:#101319;color:var(--text);font-size:17px;color-scheme:dark}
+button{min-height:46px;border:0;border-radius:12px;padding:11px 16px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.primary{background:var(--accent);color:white}.secondary{background:var(--card2);color:var(--text)}.danger{background:#351d20;color:#ff8585}
+.buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.buttons button{flex:1}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{background:var(--card2);border-radius:12px;padding:13px}.metric span{font-size:13px;color:var(--muted)}.metric b{display:block;font-size:20px;margin-top:3px}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:650px}th,td{padding:11px 7px;border-bottom:1px solid var(--border);text-align:left}th{font-size:13px;color:var(--muted)}
+.action{min-height:38px;padding:7px 10px;font-size:14px}.empty{text-align:center;color:var(--muted);padding:24px}.msg{margin-top:10px;color:var(--red);font-size:14px}
+.install{background:#171f31;border:1px solid #29446e;color:#dbe8ff;line-height:1.45}
+.install b{color:#fff}
+@media(max-width:480px){.grid{grid-template-columns:1fr}.summary{grid-template-columns:1fr}.card{padding:15px}.buttons button{width:100%}}
+</style>
+</head>
+<body>
+<main>
+<h1>Arbetstid</h1>
+<div class="sub">Manuell registrering · fungerar även som hemskärmsapp på iPhone.</div>
+
+<section class="card install">
+<b>📱 Lägg på hemskärmen</b><br>
+I Safari: tryck <b>Dela</b> → <b>Lägg till på hemskärmen</b>. Då kan du öppna Arbetstid som en app.
+</section>
+
+<section class="card">
+<h2>Registrera arbetstid</h2>
+<form id="form">
+<div class="grid">
+<div><label for="date">Datum</label><input id="date" type="date" required></div>
+<div><label for="break">Rast (minuter)</label><input id="break" type="number" min="0" max="1440" value="30" inputmode="numeric"></div>
+<div><label for="start">Start</label><input id="start" type="time" required></div>
+<div><label for="end">Slut</label><input id="end" type="time" required></div>
+</div>
+<div class="buttons">
+<button class="primary" type="submit" id="saveBtn">Spara arbetstid</button>
+<button class="secondary" type="button" id="cancelBtn" hidden>Avbryt ändring</button>
+</div>
+<div id="msg" class="msg" aria-live="polite"></div>
+</form>
+</section>
+
+<section class="card">
+<h2>Sammanfattning</h2>
+<div class="grid">
+<div><label for="from">Från</label><input id="from" type="date"></div>
+<div><label for="to">Till</label><input id="to" type="date"></div>
+</div>
+<div class="summary" style="margin-top:12px">
+<div class="metric"><span>Arbetsdagar</span><b id="days">0</b></div>
+<div class="metric"><span>Totalt</span><b id="total">0 h 00 min</b></div>
+<div class="metric"><span>Genomsnitt/dag</span><b id="avg">0 h 00 min</b></div>
+</div>
+</section>
+
+<section class="card">
+<h2>Dag för dag</h2>
+<div class="table-wrap">
+<table><thead><tr><th>Datum</th><th>Start</th><th>Slut</th><th>Rast</th><th>Arbetstid</th><th></th></tr></thead>
+<tbody id="rows"></tbody></table>
+</div>
+<div class="buttons"><button class="danger" type="button" id="clear">Rensa all historik</button></div>
+<p style="font-size:13px;color:var(--muted);line-height:1.5">Historiken sparas på enheten i webbläsarens lagring. Den följer inte automatiskt med till en annan telefon.</p>
+</section>
+</main>
+<script>
+(()=> {
+const KEY="arbetstid_iphone_v2";let data=[],editing=null;
+try{data=JSON.parse(localStorage.getItem(KEY)||"[]");if(!Array.isArray(data))data=[]}catch(e){data=[]}
+const $=id=>document.getElementById(id),pad=n=>String(n).padStart(2,"0");
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())};
+const mins=t=>{const a=t.split(":").map(Number);return a[0]*60+a[1]};
+const fmt=m=>{m=Math.max(0,Math.round(m));return Math.floor(m/60)+" h "+pad(m%60)+" min"};
+const svDate=s=>new Intl.DateTimeFormat("sv-SE",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date(s+"T12:00:00"));
+const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
+
+function render(){
+ const f=$("from").value,t=$("to").value;
+ const rows=data.filter(x=>(!f||x.date>=f)&&(!t||x.date<=t)).sort((a,b)=>b.date.localeCompare(a.date));
+ const total=rows.reduce((s,x)=>s+x.minutes,0);
+ $("days").textContent=rows.length;$("total").textContent=fmt(total);$("avg").textContent=fmt(rows.length?total/rows.length:0);
+ $("rows").innerHTML=rows.length?rows.map(x=>"<tr><td>"+svDate(x.date)+"</td><td>"+x.start+"</td><td>"+x.end+"</td><td>"+x.break+" min</td><td>"+fmt(x.minutes)+"</td><td><button class='secondary action edit' data-id='"+x.id+"' type='button'>Ändra</button> <button class='danger action del' data-id='"+x.id+"' type='button'>Ta bort</button></td></tr>").join(""):"<tr><td colspan='6' class='empty'>Ingen registrerad arbetstid i vald period.</td></tr>";
+ document.querySelectorAll(".edit").forEach(b=>b.onclick=()=>edit(b.dataset.id));
+ document.querySelectorAll(".del").forEach(b=>b.onclick=()=>{data=data.filter(x=>x.id!==b.dataset.id);save();render()});
+}
+function resetForm(){editing=null;$("form").reset();$("date").value=today();$("break").value=30;$("saveBtn").textContent="Spara arbetstid";$("cancelBtn").hidden=true;$("msg").textContent=""}
+function edit(id){const x=data.find(v=>v.id===id);if(!x)return;editing=id;$("date").value=x.date;$("start").value=x.start;$("end").value=x.end;$("break").value=x.break;$("saveBtn").textContent="Spara ändring";$("cancelBtn").hidden=false;window.scrollTo({top:0,behavior:"smooth"})}
+$("form").onsubmit=e=>{
+ e.preventDefault();
+ const date=$("date").value,start=$("start").value,end=$("end").value,br=Math.max(0,Number($("break").value)||0);
+ let duration=mins(end)-mins(start);if(duration<0)duration+=1440;duration-=br;
+ if(duration<=0){$("msg").textContent="Kontrollera tiderna och rasten.";return}
+ const item={id:editing||String(Date.now()),date,start,end,break:br,minutes:duration};
+ if(editing){const i=data.findIndex(x=>x.id===editing);if(i>=0)data[i]=item}else data.push(item);
+ save();render();resetForm();
+};
+$("cancelBtn").onclick=resetForm;
+$("clear").onclick=()=>{data=[];localStorage.removeItem(KEY);render();resetForm()};
+$("from").onchange=render;$("to").onchange=render;
+$("date").value=today();$("from").value=today();$("to").value=today();render();
+})();
+</script>
+</body>
+</html>
